@@ -1,0 +1,842 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <!-- Updated Title to T2F Branding -->
+    <title>T2F Work Orders</title>
+    <!-- Load Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: '#1D4ED8', // Dark Blue
+                        secondary: '#F59E0B', // Amber
+                        background: '#F9FAFB', // Light Gray background
+                        card: '#FFFFFF',
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                    },
+                }
+            }
+        }
+    </script>
+    <style>
+        /* Base styles for the app */
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #1F2937; /* Dark background for the main screen */
+            color: #E5E7EB; /* Light text */
+            margin: 0;
+            padding: 0;
+        }
+
+        #app {
+            display: flex;
+            height: 100vh;
+            overflow: hidden;
+            max-width: 100vw;
+        }
+
+        /* Styles for the History/Sidebar Panel */
+        #history-panel {
+            width: 300px;
+            background-color: #374151; /* Slightly lighter dark gray */
+            padding: 1.5rem;
+            overflow-y: auto;
+            border-right: 1px solid #4B5563;
+            flex-shrink: 0;
+            transition: transform 0.3s ease;
+        }
+
+        /* Styles for the Main Work Order Form */
+        #wo-form-container {
+            flex-grow: 1;
+            overflow-y: auto;
+            padding: 2rem 3rem;
+            background-color: #1F2937; /* Same dark background */
+        }
+
+        /* Work Order Card Styling */
+        .wo-card {
+            background-color: #111827; /* Darkest background for the card */
+            border-radius: 0.75rem;
+            padding: 2rem;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+            max-width: 900px;
+            margin: 0 auto 2rem;
+        }
+
+        /* Print Specific Styles */
+        @media print {
+            body, #app, #wo-form-container {
+                height: auto !important;
+                overflow: visible !important;
+                background: #FFFFFF !important; /* White background for printing */
+                color: #000000 !important;
+                padding: 0;
+                margin: 0;
+            }
+
+            /* Hide the history panel and buttons when printing */
+            #history-panel,
+            #button-panel,
+            .wo-status,
+            .logo-placeholder {
+                display: none !important;
+            }
+
+            /* Ensure the main content takes up all space */
+            #wo-form-container {
+                width: 100%;
+                max-width: 100%;
+                padding: 0.5in;
+                flex-grow: 1;
+            }
+
+            .wo-card {
+                box-shadow: none !important;
+                border: none !important;
+                background: none !important;
+                padding: 0 !important;
+                margin: 0;
+            }
+
+            /* Ensure input fields and textareas show their text */
+            input, select, textarea {
+                border: none !important;
+                background: none !important;
+                box-shadow: none !important;
+                color: #000 !important;
+                -webkit-print-color-adjust: exact;
+                print-color-adjust: exact;
+                padding: 0;
+            }
+            
+            /* Underline effect for form fields for print legibility */
+            .print-line {
+                border-bottom: 1px solid #000;
+                padding-bottom: 2px;
+                display: inline-block;
+                width: 100%;
+            }
+
+            .signature-line {
+                border-bottom: 1px solid #000;
+                width: 250px;
+                margin-top: 2rem;
+            }
+
+            /* Checkbox/Radio button display */
+            input[type="radio"]:checked + label::before,
+            input[type="checkbox"] + label::before {
+                content: 'X';
+                font-size: 10px;
+                line-height: 1;
+                margin-right: 4px;
+                padding: 1px 3px;
+                border: 1px solid #000;
+            }
+            input[type="radio"] + label::before,
+            input[type="checkbox"] + label::before {
+                content: '';
+                margin-right: 4px;
+                padding: 1px 3px;
+                border: 1px solid #000;
+            }
+
+            /* Force text alignment for print */
+            .text-xl, .text-lg, .text-sm, p {
+                color: #000 !important;
+            }
+        }
+    </style>
+    <!-- Phosphor Icons for aesthetic -->
+    <script src="https://unpkg.com/phosphor-icons"></script>
+</head>
+<body class="bg-gray-900">
+
+    <div id="app">
+        <!-- History Panel -->
+        <div id="history-panel" class="hidden md:block">
+            <h2 class="text-xl font-bold mb-6 text-primary">History</h2>
+            <button onclick="clearForm()" class="w-full bg-secondary hover:bg-yellow-600 text-gray-900 font-bold py-2 px-4 rounded-lg mb-4 flex items-center justify-center transition duration-200">
+                <i class="ph-plus-circle-fill w-5 h-5 mr-2"></i> + Create New WO
+            </button>
+            <input type="text" id="history-search" onkeyup="searchHistory()" placeholder="Search WO or Customer..." class="w-full p-2 rounded-lg bg-gray-700 text-white placeholder-gray-400 mb-4 focus:outline-none focus:ring-2 focus:ring-primary">
+
+            <div id="history-list" class="space-y-3">
+                <!-- History items load here -->
+            </div>
+            <p id="loading-history" class="text-sm text-gray-400 mt-4 hidden">Loading history...</p>
+        </div>
+
+        <!-- Main Work Order Form Container -->
+        <div id="wo-form-container">
+            <!-- Loading Indicator -->
+            <div id="loading-overlay" class="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50 hidden">
+                <div class="text-white text-lg flex items-center">
+                    <i class="ph-circle-notch-fill animate-spin mr-3 text-primary text-3xl"></i> Saving and securing WO numbers...
+                </div>
+            </div>
+
+            <!-- Error Message Display -->
+            <div id="error-message" class="wo-card bg-red-800 text-white mb-6 hidden">
+                <h3 class="text-xl font-bold mb-2">Configuration Error</h3>
+                <p id="error-text">An unrecoverable configuration error occurred. Please check the browser console for details.</p>
+            </div>
+
+            <div id="wo-form" class="wo-card">
+                
+                <!-- HEADER & WORK ORDER INFO -->
+                <header class="mb-8 border-b border-gray-700 pb-4 flex justify-between items-start">
+                    <div>
+                        <!-- Updated Branding -->
+                        <h1 class="text-3xl font-extrabold text-primary">T2F Work Orders</h1>
+                        <p class="text-lg text-gray-400">Maintenance Work Order</p>
+                    </div>
+                    <!-- Logo Placeholder -->
+                    <div class="logo-placeholder flex flex-col items-center">
+                        <i class="ph-hard-hat-fill text-6xl text-secondary"></i>
+                        <span class="text-sm text-gray-400 mt-1">Logo Placeholder</span>
+                    </div>
+                </header>
+
+                <div class="space-y-4">
+                    <h2 class="text-xl font-semibold text-gray-200 mb-4">Work Order Information</h2>
+
+                    <!-- Row 1: WO No., Control No., Date, Type -->
+                    <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+                        
+                        <!-- Work Order No. (Global WO Counter) -->
+                        <div>
+                            <label class="block text-sm font-medium text-gray-400">Work Order No. (Global)</label>
+                            <input type="text" id="wo-no" class="w-full p-2 bg-gray-700 rounded-lg border border-gray-600 text-white print-line" readonly>
+                        </div>
+
+                        <!-- Control No. (Location Counter) -->
+                        <div>
+                            <label class="block text-sm font-medium text-gray-400">Control No. (AIMS Sequence)</label>
+                            <input type="text" id="control-no" class="w-full p-2 bg-gray-700 rounded-lg border border-gray-600 text-white print-line" readonly>
+                        </div>
+
+                        <!-- Date Completed -->
+                        <div>
+                            <label for="date-completed" class="block text-sm font-medium text-gray-400">Date Completed</label>
+                            <input type="date" id="date-completed" class="w-full p-2 bg-gray-700 rounded-lg border border-gray-600 text-white print-line">
+                        </div>
+                        
+                        <!-- Work Order Type Dropdown -->
+                        <div>
+                            <label for="wo-type" class="block text-sm font-medium text-gray-400">Work Order Type</label>
+                            <select id="wo-type" class="w-full p-2 bg-gray-700 rounded-lg border border-gray-600 text-white print-line">
+                                <option value="" disabled selected>Select Type</option>
+                                <option value="Incoming Inspection">Incoming Inspection</option>
+                                <option value="Preventative Maintenance">Preventative Maintenance</option>
+                                <option value="Corrective Maintenance">Corrective Maintenance</option>
+                                <option value="Recall/Remediation">Recall/Remediation</option>
+                                <option value="Calibration">Calibration</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <!-- Row 2: Technician, Customer, Contact, Location -->
+                    <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+                         <!-- Technician -->
+                        <div>
+                            <label for="technician" class="block text-sm font-medium text-gray-400">Technician</label>
+                            <input type="text" id="technician" value="Biomed Engineer" class="w-full p-2 bg-gray-700 rounded-lg border border-gray-600 text-white print-line">
+                        </div>
+
+                        <!-- Customer / Department -->
+                        <div>
+                            <label for="customer" class="block text-sm font-medium text-gray-400">Customer / Department</label>
+                            <input type="text" id="customer" class="w-full p-2 bg-gray-700 rounded-lg border border-gray-600 text-white print-line">
+                        </div>
+
+                        <!-- Contact Person -->
+                        <div>
+                            <label for="contact-person" class="block text-sm font-medium text-gray-400">Contact Person</label>
+                            <input type="text" id="contact-person" class="w-full p-2 bg-gray-700 rounded-lg border border-gray-600 text-white print-line">
+                        </div>
+
+                        <!-- Phone / Email -->
+                        <div>
+                            <label for="contact-info" class="block text-sm font-medium text-gray-400">Phone / Email</label>
+                            <input type="text" id="contact-info" class="w-full p-2 bg-gray-700 rounded-lg border border-gray-600 text-white print-line">
+                        </div>
+                    </div>
+                </div>
+
+                <hr class="my-8 border-gray-700">
+
+                <!-- EQUIPMENT INFORMATION -->
+                <div class="space-y-4">
+                    <h2 class="text-xl font-semibold text-gray-200 mb-4">Equipment Information</h2>
+
+                    <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+                        <!-- Equipment Name -->
+                        <div>
+                            <label for="equipment-name" class="block text-sm font-medium text-gray-400">Equipment Name</label>
+                            <input type="text" id="equipment-name" class="w-full p-2 bg-gray-700 rounded-lg border border-gray-600 text-white print-line">
+                        </div>
+
+                        <!-- Manufacturer -->
+                        <div>
+                            <label for="manufacturer" class="block text-sm font-medium text-gray-400">Manufacturer</label>
+                            <input type="text" id="manufacturer" class="w-full p-2 bg-gray-700 rounded-lg border border-gray-600 text-white print-line">
+                        </div>
+
+                        <!-- Model No. -->
+                        <div>
+                            <label for="model-no" class="block text-sm font-medium text-gray-400">Model No.</label>
+                            <input type="text" id="model-no" class="w-full p-2 bg-gray-700 rounded-lg border border-gray-600 text-white print-line">
+                        </div>
+
+                        <!-- Serial No. -->
+                        <div>
+                            <label for="serial-no" class="block text-sm font-medium text-gray-400">Serial No.</label>
+                            <input type="text" id="serial-no" class="w-full p-2 bg-gray-700 rounded-lg border border-gray-600 text-white print-line">
+                        </div>
+                    </div>
+
+                    <!-- Location and Status -->
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <!-- Location -->
+                        <div>
+                            <label for="location" class="block text-sm font-medium text-gray-400">Location (Clinic / Room)</label>
+                            <input type="text" id="location" class="w-full p-2 bg-gray-700 rounded-lg border border-gray-600 text-white print-line">
+                        </div>
+
+                        <!-- Status Upon Receipt -->
+                        <div class="pt-1">
+                            <label class="block text-sm font-medium text-gray-400 mb-2">Status Upon Receipt:</label>
+                            <div class="flex flex-wrap space-x-4">
+                                <label class="flex items-center space-x-1 text-white">
+                                    <input type="radio" name="status-receipt" value="New" class="form-radio text-primary" checked>
+                                    <span>New</span>
+                                </label>
+                                <label class="flex items-center space-x-1 text-white">
+                                    <input type="radio" name="status-receipt" value="Used" class="form-radio text-primary">
+                                    <span>Used</span>
+                                </label>
+                                <label class="flex items-center space-x-1 text-white">
+                                    <input type="radio" name="status-receipt" value="Demo/Loaner" class="form-radio text-primary">
+                                    <span>Demo/Loaner</span>
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <hr class="my-8 border-gray-700">
+
+                <!-- INSPECTION CHECKLIST -->
+                <div class="space-y-4">
+                    <h2 class="text-xl font-semibold text-gray-200 mb-4">Inspection Checklist</h2>
+                    
+                    <div class="space-y-3">
+                        <div class="grid grid-cols-5 md:grid-cols-12 gap-2 text-sm font-bold border-b border-gray-600 pb-2 mb-2 text-gray-400">
+                            <div class="col-span-3 md:col-span-6">Item</div>
+                            <div class="text-center col-span-1 md:col-span-2">Pass</div>
+                            <div class="text-center col-span-1 md:col-span-1">Fail</div>
+                            <div class="col-span-1 md:col-span-3">Comments</div>
+                        </div>
+
+                        <!-- Checklist Items -->
+                        <!-- Row 1 -->
+                        <div class="grid grid-cols-5 md:grid-cols-12 gap-2 items-center text-white">
+                            <div class="col-span-3 md:col-span-6">Physical condition (no damage, clean)</div>
+                            <div class="text-center col-span-1 md:col-span-2"><input type="radio" name="c1" value="Pass" class="form-radio text-primary" checked></div>
+                            <div class="text-center col-span-1 md:col-span-1"><input type="radio" name="c1" value="Fail" class="form-radio text-primary"></div>
+                            <div class="col-span-1 md:col-span-3"><input type="text" name="c1-comments" class="w-full bg-gray-700 rounded-lg text-white text-sm p-1 print-line"></div>
+                        </div>
+
+                        <!-- Row 2 -->
+                        <div class="grid grid-cols-5 md:grid-cols-12 gap-2 items-center text-white">
+                            <div class="col-span-3 md:col-span-6">Power cable and accessories included</div>
+                            <div class="text-center col-span-1 md:col-span-2"><input type="radio" name="c2" value="Pass" class="form-radio text-primary" checked></div>
+                            <div class="text-center col-span-1 md:col-span-1"><input type="radio" name="c2" value="Fail" class="form-radio text-primary"></div>
+                            <div class="col-span-1 md:col-span-3"><input type="text" name="c2-comments" class="w-full bg-gray-700 rounded-lg text-white text-sm p-1 print-line"></div>
+                        </div>
+
+                        <!-- Row 3 -->
+                        <div class="grid grid-cols-5 md:grid-cols-12 gap-2 items-center text-white">
+                            <div class="col-span-3 md:col-span-6">Power-on self test / startup check</div>
+                            <div class="text-center col-span-1 md:col-span-2"><input type="radio" name="c3" value="Pass" class="form-radio text-primary" checked></div>
+                            <div class="text-center col-span-1 md:col-span-1"><input type="radio" name="c3" value="Fail" class="form-radio text-primary"></div>
+                            <div class="col-span-1 md:col-span-3"><input type="text" name="c3-comments" class="w-full bg-gray-700 rounded-lg text-white text-sm p-1 print-line"></div>
+                        </div>
+                        
+                        <!-- Row 4 -->
+                        <div class="grid grid-cols-5 md:grid-cols-12 gap-2 items-center text-white">
+                            <div class="col-span-3 md:col-span-6">Functional test (basic operation)</div>
+                            <div class="text-center col-span-1 md:col-span-2"><input type="radio" name="c4" value="Pass" class="form-radio text-primary" checked></div>
+                            <div class="text-center col-span-1 md:col-span-1"><input type="radio" name="c4" value="Fail" class="form-radio text-primary"></div>
+                            <div class="col-span-1 md:col-span-3"><input type="text" name="c4-comments" class="w-full bg-gray-700 rounded-lg text-white text-sm p-1 print-line"></div>
+                        </div>
+
+                        <!-- Row 5: Safety Check (EST) -->
+                        <div class="grid grid-cols-5 md:grid-cols-12 gap-2 items-center text-white">
+                            <div class="col-span-3 md:col-span-6">Safety Check (EST - Electrical Safety Test)</div>
+                            <div class="text-center col-span-1 md:col-span-2"><input type="radio" name="c5" value="Pass" class="form-radio text-primary" checked></div>
+                            <div class="text-center col-span-1 md:col-span-1"><input type="radio" name="c5" value="Fail" class="form-radio text-primary"></div>
+                            <div class="col-span-1 md:col-span-3"><input type="text" name="c5-comments" class="w-full bg-gray-700 rounded-lg text-white text-sm p-1 print-line"></div>
+                        </div>
+                        
+                        <!-- Row 6 -->
+                        <div class="grid grid-cols-5 md:grid-cols-12 gap-2 items-center text-white">
+                            <div class="col-span-3 md:col-span-6">Labeling / Control Tag Applied</div>
+                            <div class="text-center col-span-1 md:col-span-2"><input type="radio" name="c6" value="Pass" class="form-radio text-primary" checked></div>
+                            <div class="text-center col-span-1 md:col-span-1"><input type="radio" name="c6" value="Fail" class="form-radio text-primary"></div>
+                            <div class="col-span-1 md:col-span-3"><input type="text" name="c6-comments" class="w-full bg-gray-700 rounded-lg text-white text-sm p-1 print-line"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <hr class="my-8 border-gray-700">
+
+                <!-- FINDINGS / NOTES -->
+                <div>
+                    <h2 class="text-xl font-semibold text-gray-200 mb-4">Findings / Notes</h2>
+                    <textarea id="findings-notes" rows="6" class="w-full p-3 bg-gray-700 rounded-lg border border-gray-600 text-white placeholder-gray-400 print-line"></textarea>
+                </div>
+
+                <hr class="my-8 border-gray-700">
+
+                <!-- NEXT SCHEDULED MAINTENANCE -->
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-4 items-end">
+                    <div class="col-span-2">
+                        <h2 class="text-xl font-semibold text-gray-200 mb-2">Next Scheduled Maintenance</h2>
+                    </div>
+                    
+                    <!-- Month/Year Picker -->
+                    <div class="col-span-1">
+                        <label for="next-pm-month" class="block text-sm font-medium text-gray-400">Month</label>
+                        <select id="next-pm-month" class="w-full p-2 bg-gray-700 rounded-lg border border-gray-600 text-white print-line">
+                            <option value="01">January</option>
+                            <option value="02">February</option>
+                            <option value="03">March</option>
+                            <option value="04">April</option>
+                            <option value="05">May</option>
+                            <option value="06">June</option>
+                            <option value="07">July</option>
+                            <option value="08">August</option>
+                            <option value="09">September</option>
+                            <option value="10">October</option>
+                            <option value="11">November</option>
+                            <option value="12">December</option>
+                        </select>
+                    </div>
+
+                    <div class="col-span-1">
+                        <label for="next-pm-year" class="block text-sm font-medium text-gray-400">Year</label>
+                        <select id="next-pm-year" class="w-full p-2 bg-gray-700 rounded-lg border border-gray-600 text-white print-line"></select>
+                    </div>
+                </div>
+                
+                <hr class="my-8 border-gray-700">
+
+                <!-- TECHNICIAN CERTIFICATION & SIGNATURE -->
+                <div>
+                    <h2 class="text-xl font-semibold text-gray-200 mb-4">Technician Certification</h2>
+                    <p class="text-gray-400 mb-6">I certify that the above equipment has been inspected according to Biomedical Engineering standards and meets functional and safety requirements.</p>
+
+                    <div class="flex items-center space-x-12">
+                        <div>
+                            <div class="signature-line"></div>
+                            <p class="text-sm text-gray-400 mt-1">Technician Signature</p>
+                        </div>
+                        <div>
+                            <div class="signature-line"></div>
+                            <p class="text-sm text-gray-400 mt-1">Date</p>
+                        </div>
+                    </div>
+                </div>
+                
+            </div>
+            
+            <!-- Button Panel (Outside the printable area) -->
+            <div id="button-panel" class="flex justify-center space-x-4 mt-6 mb-12">
+                <button onclick="saveWorkOrder()" class="bg-primary hover:bg-blue-600 text-white font-bold py-3 px-6 rounded-lg transition duration-200 shadow-lg flex items-center">
+                    <i class="ph-cloud-arrow-up-fill w-5 h-5 mr-2"></i> Save Work Order
+                </button>
+                <button onclick="printWorkOrder()" class="bg-secondary hover:bg-yellow-600 text-gray-900 font-bold py-3 px-6 rounded-lg transition duration-200 shadow-lg flex items-center">
+                    <i class="ph-printer-fill w-5 h-5 mr-2"></i> Print / Export PDF
+                </button>
+            </div>
+        </div>
+    </div>
+    
+    <!-- FIREBASE AND JAVASCRIPT LOGIC -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, getDoc, setDoc, onSnapshot, collection, query, addDoc, getDocs, runTransaction, updateDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // --- GLOBAL APP STATE ---
+        let db = null;
+        let auth = null;
+        let userId = null;
+        let isNewWO = true;
+        let currentWoId = null;
+
+        // --- YOUR FIREBASE CONFIGURATION (MANDATORY UPDATE) ---
+        // I have inserted the keys from your screenshot. This should now work!
+        
+        // 1. MUST contain your Firebase Project ID here (used for data path):
+        const appId = 't2f-wo-app-42i8d'; 
+
+        // 2. MUST contain your Firebase Config Object here:
+        const firebaseConfig = {
+            apiKey: "AIzaSyDH0tG9F0wdvpu6M1Er1GzQhXLVuprgBM",
+            authDomain: "t2f-wo-app-42i8d.firebaseapp.com",
+            projectId: "t2f-wo-app-42i8d",
+            storageBucket: "t2f-wo-app-42i8d.appspot.com",
+            messagingSenderId: "746232638333",
+            appId: "1:746232638333:web:531737e69f8804918e6922"
+        };
+
+        const initialAuthToken = null; // Not needed for external hosting
+
+        // ----------------------------------------------------------------------------------
+
+        // --- UTILITY FUNCTIONS ---
+
+        function showMessage(message, isError = false) {
+            const container = document.getElementById('error-message');
+            const textElement = document.getElementById('error-text');
+            textElement.textContent = message;
+            container.classList.remove('hidden');
+            if (isError) {
+                container.classList.add('bg-red-800');
+                container.classList.remove('bg-green-800');
+            } else {
+                container.classList.add('bg-green-800');
+                container.classList.remove('bg-red-800');
+            }
+            // Hide message after 5 seconds
+            setTimeout(() => {
+                container.classList.add('hidden');
+            }, 5000);
+        }
+
+        // Sets up the month/year selection for Next Scheduled Maintenance
+        function setupPmDatePickers() {
+            const yearSelect = document.getElementById('next-pm-year');
+            const monthSelect = document.getElementById('next-pm-month');
+            const currentYear = new Date().getFullYear();
+            const currentMonth = new Date().getMonth() + 1; // 1-indexed
+
+            for (let i = 0; i < 5; i++) {
+                const year = currentYear + i;
+                const option = document.createElement('option');
+                option.value = year;
+                option.textContent = year;
+                yearSelect.appendChild(option);
+            }
+            yearSelect.value = currentYear;
+
+            // Set default month to current month
+            monthSelect.value = currentMonth.toString().padStart(2, '0');
+        }
+
+        // --- FIREBASE INITIALIZATION ---
+
+        async function setupFirebase() {
+            try {
+                // Check for required configuration elements
+                if (!firebaseConfig || !firebaseConfig.projectId) {
+                    throw new Error("Missing or incomplete firebaseConfig. Check your file upload.");
+                }
+
+                const app = initializeApp(firebaseConfig);
+                db = getFirestore(app);
+                auth = getAuth(app);
+
+                // Sign in anonymously for secure, session-based storage
+                await signInAnonymously(auth);
+                userId = auth.currentUser.uid;
+                
+                // Start listening to data and setting up UI
+                startListeningForHistory();
+                setupPmDatePickers();
+                clearForm(); // Load initial WO number after auth
+
+            } catch (error) {
+                console.error("Firebase Initialization Failed:", error);
+                document.getElementById('loading-overlay').classList.add('hidden');
+                document.getElementById('error-message').classList.remove('hidden');
+                document.getElementById('error-text').textContent = `Initialization Error: ${error.message}. Ensure Firebase Auth (Anonymous) and Firestore are enabled and rules are correct.`;
+            }
+        }
+
+        // --- WORK ORDER NUMBERING LOGIC ---
+
+        const COUNTER_PATH = `artifacts/${appId}/users/${userId}/counters/main`;
+
+        async function getNextWOAndControlNumbers() {
+            document.getElementById('loading-overlay').classList.remove('hidden');
+            let woNo = 'WO-100';
+            let controlNo = 'AIMS-00001';
+            
+            try {
+                await runTransaction(db, async (transaction) => {
+                    const counterRef = doc(db, COUNTER_PATH);
+                    const counterDoc = await transaction.get(counterRef);
+                    
+                    let globalWO = 99; // Start at 100
+                    let globalControl = 0; // Start at 1
+
+                    if (counterDoc.exists()) {
+                        const data = counterDoc.data();
+                        globalWO = data.lastWo || 99;
+                        globalControl = data.lastControl || 0;
+                    }
+                    
+                    const nextWo = globalWO + 1;
+                    const nextControl = globalControl + 1;
+
+                    // Update the counter for the transaction
+                    transaction.set(counterRef, {
+                        lastWo: nextWo,
+                        lastControl: nextControl
+                    }, { merge: true });
+
+                    woNo = `WO-${nextWo}`;
+                    controlNo = `AIMS-${nextControl.toString().padStart(5, '0')}`;
+                });
+            } catch (e) {
+                console.error("Transaction failed:", e);
+                showMessage("Failed to secure next Work Order number. Check database connection and rules.", true);
+            } finally {
+                document.getElementById('loading-overlay').classList.add('hidden');
+            }
+            return { woNo, controlNo };
+        }
+        
+        // --- DATA BINDING AND FORM MANAGEMENT ---
+
+        function clearForm() {
+            isNewWO = true;
+            currentWoId = null;
+            document.getElementById('wo-form').reset();
+            document.getElementById('date-completed').valueAsDate = new Date();
+            document.getElementById('technician').value = "Biomed Engineer";
+            document.getElementById('wo-type').value = ""; // Clear selected WO type
+            
+            // Set WO and Control numbers for the new entry
+            getNextWOAndControlNumbers().then(numbers => {
+                document.getElementById('wo-no').value = numbers.woNo;
+                document.getElementById('control-no').value = numbers.controlNo;
+                showMessage(`Ready for new Work Order: ${numbers.woNo}`, false);
+            });
+        }
+
+        function collectFormData() {
+            const formData = {
+                woNo: document.getElementById('wo-no').value,
+                controlNo: document.getElementById('control-no').value,
+                dateCompleted: document.getElementById('date-completed').value,
+                woType: document.getElementById('wo-type').value,
+                technician: document.getElementById('technician').value,
+                customer: document.getElementById('customer').value,
+                contactPerson: document.getElementById('contact-person').value,
+                contactInfo: document.getElementById('contact-info').value,
+                
+                equipment: {
+                    name: document.getElementById('equipment-name').value,
+                    manufacturer: document.getElementById('manufacturer').value,
+                    modelNo: document.getElementById('model-no').value,
+                    serialNo: document.getElementById('serial-no').value,
+                    location: document.getElementById('location').value,
+                    status: document.querySelector('input[name="status-receipt"]:checked').value,
+                },
+
+                checklist: {},
+                
+                findings: document.getElementById('findings-notes').value,
+                
+                nextPm: {
+                    month: document.getElementById('next-pm-month').value,
+                    year: document.getElementById('next-pm-year').value,
+                },
+
+                timestamp: Date.now(),
+            };
+
+            // Collect checklist results
+            for (let i = 1; i <= 6; i++) {
+                const result = document.querySelector(`input[name="c${i}"]:checked`)?.value;
+                const comments = document.querySelector(`input[name="c${i}-comments"]`)?.value || "";
+                formData.checklist[`c${i}`] = { result, comments };
+            }
+
+            return formData;
+        }
+
+        function loadForm(data) {
+            isNewWO = false;
+            document.getElementById('wo-no').value = data.woNo;
+            document.getElementById('control-no').value = data.controlNo;
+            document.getElementById('date-completed').value = data.dateCompleted;
+            document.getElementById('wo-type').value = data.woType;
+            document.getElementById('technician').value = data.technician;
+            document.getElementById('customer').value = data.customer;
+            document.getElementById('contact-person').value = data.contactPerson;
+            document.getElementById('contact-info').value = data.contactInfo;
+            
+            document.getElementById('equipment-name').value = data.equipment.name;
+            document.getElementById('manufacturer').value = data.equipment.manufacturer;
+            document.getElementById('model-no').value = data.equipment.modelNo;
+            document.getElementById('serial-no').value = data.equipment.serialNo;
+            document.getElementById('location').value = data.equipment.location;
+            
+            // Status
+            document.querySelector(`input[name="status-receipt"][value="${data.equipment.status}"]`).checked = true;
+
+            // Checklist
+            for (let i = 1; i <= 6; i++) {
+                const item = data.checklist[`c${i}`];
+                if (item) {
+                    if (item.result) {
+                        document.querySelector(`input[name="c${i}"][value="${item.result}"]`).checked = true;
+                    }
+                    if (item.comments) {
+                        document.querySelector(`input[name="c${i}-comments"]`).value = item.comments;
+                    }
+                }
+            }
+
+            document.getElementById('findings-notes').value = data.findings;
+            
+            // Next PM Date
+            document.getElementById('next-pm-month').value = data.nextPm.month;
+            document.getElementById('next-pm-year').value = data.nextPm.year;
+            
+            showMessage(`Loaded Work Order: ${data.woNo} (${data.controlNo})`);
+        }
+
+        // --- DATABASE OPERATIONS ---
+
+        async function saveWorkOrder() {
+            if (!db || !userId) {
+                showMessage("Database connection not ready. Please refresh.", true);
+                return;
+            }
+
+            const data = collectFormData();
+            
+            if (!data.woType) {
+                showMessage("Please select a Work Order Type before saving.", true);
+                return;
+            }
+
+            document.getElementById('loading-overlay').classList.remove('hidden');
+
+            try {
+                const workOrdersCollection = collection(db, `artifacts/${appId}/users/${userId}/workOrders`);
+
+                if (isNewWO) {
+                    // When saving a new WO, the numbers are already locked by the getNextWOAndControlNumbers call
+                    await addDoc(workOrdersCollection, data);
+                    showMessage(`Successfully saved new Work Order: ${data.woNo} / ${data.controlNo}`);
+                    clearForm(); // Reset form and get next numbers
+                } else {
+                    // Update existing document
+                    const docRef = doc(workOrdersCollection, currentWoId);
+                    await updateDoc(docRef, data);
+                    showMessage(`Successfully updated Work Order: ${data.woNo} / ${data.controlNo}`);
+                }
+
+            } catch (e) {
+                console.error("Error saving document: ", e);
+                showMessage(`Error saving Work Order: ${e.message}`, true);
+            } finally {
+                document.getElementById('loading-overlay').classList.add('hidden');
+            }
+        }
+
+        // --- HISTORY PANEL LOGIC ---
+
+        function startListeningForHistory() {
+            const historyList = document.getElementById('history-list');
+            const historyCollection = collection(db, `artifacts/${appId}/users/${userId}/workOrders`);
+            const q = query(historyCollection);
+            
+            document.getElementById('loading-history').classList.remove('hidden');
+
+            onSnapshot(q, (snapshot) => {
+                const search = document.getElementById('history-search').value.toLowerCase();
+                historyList.innerHTML = '';
+                
+                let historyData = [];
+                snapshot.forEach(doc => {
+                    historyData.push({ id: doc.id, ...doc.data() });
+                });
+
+                // Sort newest first
+                historyData.sort((a, b) => b.timestamp - a.timestamp);
+
+                historyData.forEach(item => {
+                    const searchString = `${item.woNo} ${item.controlNo} ${item.customer} ${item.equipment.name}`.toLowerCase();
+                    if (searchString.includes(search)) {
+                        const historyItem = document.createElement('div');
+                        historyItem.className = 'p-3 bg-gray-800 rounded-lg cursor-pointer hover:bg-gray-700 transition duration-150';
+                        historyItem.innerHTML = `
+                            <p class="text-sm font-bold text-white">${item.woNo} / ${item.controlNo}</p>
+                            <p class="text-xs text-primary">${item.customer || 'N/A'}</p>
+                            <p class="text-xs text-gray-500">${item.equipment.name || 'Equipment N/A'}</p>
+                        `;
+                        historyItem.onclick = () => loadHistoryItem(item.id, item);
+                        historyList.appendChild(historyItem);
+                    }
+                });
+
+                document.getElementById('loading-history').classList.add('hidden');
+                if (historyList.children.length === 0) {
+                     historyList.innerHTML = `<p class="text-sm text-gray-500">No matching WOs found.</p>`;
+                }
+            }, (error) => {
+                console.error("Error listening to history:", error);
+                document.getElementById('loading-history').classList.add('hidden');
+                historyList.innerHTML = `<p class="text-sm text-red-400">Error loading history. Check rules.</p>`;
+            });
+        }
+
+        function loadHistoryItem(id, data) {
+            currentWoId = id;
+            loadForm(data);
+            window.scrollTo(0, 0); // Scroll to top of the form
+        }
+
+        function searchHistory() {
+            // Re-run the filter logic applied in startListeningForHistory
+            // Since onSnapshot is active, we just need to re-trigger the rendering logic
+            // Note: The listener already filters on the frontend via JS, so a re-render is usually fast.
+            startListeningForHistory();
+        }
+
+
+        // --- PRINTING ---
+        function printWorkOrder() {
+            window.print();
+        }
+
+        // --- INITIALIZATION ---
+        window.onload = () => {
+            setupFirebase();
+        };
+
+        // Expose functions globally for HTML access
+        window.clearForm = clearForm;
+        window.saveWorkOrder = saveWorkOrder;
+        window.printWorkOrder = printWorkOrder;
+        window.searchHistory = searchHistory;
+        
+    </script>
+</body>
+</html>
