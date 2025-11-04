@@ -250,23 +250,24 @@
     import { getFirestore, doc, setDoc, onSnapshot, collection, query, addDoc, getDoc, runTransaction, serverTimestamp, setLogLevel } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
     // --- Global Variables ---
-    const appId = 'arrow-imaging-wo-app-production'; // A unique ID for your app's data path
+    // We use the new project ID here for the app data path
+    const appId = 'work-order-app-f2dc7'; 
 
     // PASTE YOUR REAL FIREBASE CONFIGURATION HERE:
     const firebaseConfig = {
-      // Replace this entire object with the one you copied in Step 1.2
-      apiKey: "YOUR_API_KEY_HERE",
-      authDomain: "YOUR_AUTH_DOMAIN_HERE",
-      projectId: "YOUR_PROJECT_ID_HERE",
-      storageBucket: "YOUR_STORAGE_BUCKET_HERE",
-      messagingSenderId: "YOUR_MESSAGING_SENDER_ID_HERE",
-      appId: "YOUR_APP_ID_HERE",
-      // measurementId: "G-XXXXXX"
+      apiKey: "AIzaSyDH0tG9F0wdvpu6M1Er1GzQhXLVuprgBM",
+      authDomain: "work-order-app-f2dc7.firebaseapp.com",
+      projectId: "work-order-app-f2dc7",
+      storageBucket: "work-order-app-f2dc7.appspot.com",
+      messagingSenderId: "746232638333",
+      appId: "1:746232638333:web:39e9a2ca1464b60f533a14",
+      measurementId: "G-8X1LLPZCN2"
     };
 
-    // We don't need the initialAuthToken since we sign in anonymously on hosted apps.
+    // We set the auth token to null for publicly hosted apps.
     const initialAuthToken = null;
     // ---------------------------------------------------------
+
     let app;
     let db;
     let auth;
