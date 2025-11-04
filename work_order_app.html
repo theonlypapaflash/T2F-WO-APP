@@ -249,12 +249,24 @@
     import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
     import { getFirestore, doc, setDoc, onSnapshot, collection, query, addDoc, getDoc, runTransaction, serverTimestamp, setLogLevel } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
-    // --- Global Variables (Provided by Canvas Environment) ---
-    const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-biomed-app-id';
-    const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : null;
-    const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
-    // ---------------------------------------------------------
+    // --- Global Variables ---
+    const appId = 'arrow-imaging-wo-app-production'; // A unique ID for your app's data path
 
+    // PASTE YOUR REAL FIREBASE CONFIGURATION HERE:
+    const firebaseConfig = {
+      // Replace this entire object with the one you copied in Step 1.2
+      apiKey: "YOUR_API_KEY_HERE",
+      authDomain: "YOUR_AUTH_DOMAIN_HERE",
+      projectId: "YOUR_PROJECT_ID_HERE",
+      storageBucket: "YOUR_STORAGE_BUCKET_HERE",
+      messagingSenderId: "YOUR_MESSAGING_SENDER_ID_HERE",
+      appId: "YOUR_APP_ID_HERE",
+      // measurementId: "G-XXXXXX"
+    };
+
+    // We don't need the initialAuthToken since we sign in anonymously on hosted apps.
+    const initialAuthToken = null;
+    // ---------------------------------------------------------
     let app;
     let db;
     let auth;
