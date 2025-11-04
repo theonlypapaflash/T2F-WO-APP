@@ -1,0 +1,744 @@
+<!DOCTYPE TML>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Arrow Imaging - Work Order Generator</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Inter', sans-serif; background-color: #f7f9fb; }
+        /* Style for the print view */
+        @media print {
+            .no-print { display: none !important; }
+            .print-area { max-width: 100%; margin: 0; padding: 0; box-shadow: none; border-radius: 0; }
+            body { background-color: white; }
+            /* Force inputs/textareas to show content */
+            input, textarea, select {
+                border: none !important;
+                background: none !important;
+                -webkit-print-color-adjust: exact;
+                print-color-adjust: exact;
+            }
+            /* Styling for read-only fields to look good when printed */
+            input[readonly] {
+                border-bottom: 1px dashed #9ca3af !important;
+                background-color: transparent !important;
+                font-weight: 700 !important;
+                color: #1f2937 !important;
+            }
+            .checklist-table input[type="radio"]:checked + label {
+                font-weight: bold;
+                background-color: #e0f2f1; /* Light cyan highlight for checked items */
+                padding: 2px 4px;
+                border-radius: 4px;
+            }
+        }
+        .wo-field-label { font-weight: 600; color: #4b5563; }
+        /* Read-only fields for WO/Control number look distinct */
+        #woNo[readonly], #controlNo[readonly] {
+            background-color: #f3f4f6;
+        }
+    </style>
+</head>
+<body>
+
+<div id="app" class="flex flex-col lg:flex-row h-screen antialiased">
+
+    <!-- Loading State -->
+    <div id="loading-overlay" class="fixed inset-0 bg-gray-100 flex items-center justify-center z-50">
+        <div class="text-xl font-semibold text-gray-700">Loading Application...</div>
+    </div>
+
+    <!-- History Panel (no-print) -->
+    <div id="history-panel" class="no-print w-full lg:w-72 bg-white border-r border-gray-200 p-4 overflow-y-auto">
+        <h2 class="text-2xl font-bold text-gray-800 mb-4 border-b pb-2">Work Order History</h2>
+        <button onclick="newWorkOrder()" class="w-full mb-4 py-2 px-4 bg-blue-600 text-white font-semibold rounded-lg shadow-md hover:bg-blue-700 transition duration-150">
+            + Create New WO
+        </button>
+
+        <div id="work-order-list" class="space-y-2">
+            <!-- Work orders will be dynamically inserted here -->
+            <p id="no-wo-message" class="text-gray-500 text-sm italic">No saved Work Orders yet.</p>
+        </div>
+        <div id="user-info" class="mt-4 pt-4 border-t text-sm text-gray-500">
+            <p>User ID (for private data storage):</p>
+            <p id="current-user-id" class="font-mono break-all text-xs text-gray-700"></p>
+        </div>
+    </div>
+
+    <!-- Work Order Form/Preview Area -->
+    <div class="flex-1 overflow-y-auto p-4 lg:p-8">
+        <div id="work-order-form" class="print-area max-w-4xl mx-auto bg-white p-6 md:p-10 rounded-xl shadow-lg border border-gray-100">
+
+            <!-- Company Header with Logo -->
+            <div class="text-center mb-8 border-b-2 border-indigo-600 pb-4 flex flex-col md:flex-row items-center justify-center">
+                <!-- Placeholder Logo - Change the 'src' attribute to your actual logo URL -->
+                <img src="https://placehold.co/80x80/293E6A/FFFFFF?text=AIM" alt="Arrow Imaging & Medical Services Logo" class="w-20 h-20 mr-0 md:mr-4 mb-4 md:mb-0 rounded-full border-2 border-indigo-500">
+                <div>
+                    <h1 class="text-3xl font-bold text-indigo-700">Arrow Imaging & Medical Services</h1>
+                    <p class="text-gray-600">Biomedical Equipment Maintenance Work Order</p>
+                </div>
+            </div>
+
+            <!-- --- Work Order Information --- -->
+            <h2 class="text-xl font-bold text-gray-700 mb-4 border-l-4 border-indigo-500 pl-3">Work Order Information</h2>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
+                <!-- ROW 1: WO No. and WO Type -->
+                <div class="flex flex-col">
+                    <label class="wo-field-label">Work Order No. (Global):</label>
+                    <input type="text" id="woNo" class="p-2 border border-gray-300 rounded-lg bg-gray-50 font-mono text-lg" value="WO-100" readonly>
+                </div>
+                <div class="flex flex-col">
+                    <label class="wo-field-label">Work Order Type:</label>
+                    <select id="woType" class="p-2 border border-gray-300 rounded-lg focus:ring-indigo-500 focus:border-indigo-500">
+                        <option value="">-- Select Type --</option>
+                        <option value="Incoming Inspection">Incoming Inspection</option>
+                        <option value="Preventative Maintenance">Preventative Maintenance (PM)</option>
+                        <option value="Corrective Maintenance">Corrective Maintenance (CM)</option>
+                        <option value="Recall/Remediation">Recall/Remediation</option>
+                        <option value="Calibration">Calibration</option>
+                        <option value="Installation">Installation</option>
+                        <option value="Disposal">Disposal</option>
+                    </select>
+                </div>
+
+                <!-- ROW 2: Location Code and Control No. -->
+                <div class="flex flex-col">
+                    <label class="wo-field-label">Location Code (e.g., DUB, ACP):</label>
+                    <input type="text" id="locationCode" class="p-2 border border-gray-300 rounded-lg focus:ring-indigo-500 focus:border-indigo-500 uppercase" placeholder="3-Letter Abbreviation">
+                </div>
+                <div class="flex flex-col">
+                    <label class="wo-field-label">Control No. (Location Seq.):</label>
+                    <input type="text" id="controlNo" class="p-2 border border-gray-300 rounded-lg bg-gray-50 font-mono text-lg" value="XXX-00001" readonly>
+                </div>
+
+                <!-- ROW 3+: Standard Fields -->
+                <div class="flex flex-col">
+                    <label class="wo-field-label">Date Completed:</label>
+                    <input type="date" id="dateCompleted" class="p-2 border border-gray-300 rounded-lg focus:ring-indigo-500 focus:border-indigo-500">
+                </div>
+                <div class="flex flex-col">
+                    <label class="wo-field-label">Technician:</label>
+                    <input type="text" id="technician" class="p-2 border border-gray-300 rounded-lg focus:ring-indigo-500 focus:border-indigo-500" placeholder="Your Name">
+                </div>
+                <div class="flex flex-col">
+                    <label class="wo-field-label">Customer / Department:</label>
+                    <input type="text" id="customerDept" class="p-2 border border-gray-300 rounded-lg focus:ring-indigo-500 focus:border-indigo-500" placeholder="Clinic or Department Name">
+                </div>
+                <div class="flex flex-col">
+                    <label class="wo-field-label">Contact Person:</label>
+                    <input type="text" id="contactPerson" class="p-2 border border-gray-300 rounded-lg focus:ring-indigo-500 focus:border-indigo-500" placeholder="Customer Contact Name">
+                </div>
+                <div class="flex flex-col">
+                    <label class="wo-field-label">Phone / Email:</label>
+                    <input type="text" id="contactInfo" class="p-2 border border-gray-300 rounded-lg focus:ring-indigo-500 focus:border-indigo-500" placeholder="Contact Info">
+                </div>
+            </div>
+
+            <!-- --- Equipment Information --- -->
+            <h2 class="text-xl font-bold text-gray-700 mb-4 border-l-4 border-indigo-500 pl-3">Equipment Information</h2>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+                <div class="flex flex-col">
+                    <label class="wo-field-label">Equipment Name:</label>
+                    <input type="text" id="equipmentName" class="p-2 border border-gray-300 rounded-lg focus:ring-indigo-500 focus:border-indigo-500" placeholder="e.g., Vital Signs Monitor">
+                </div>
+                <div class="flex flex-col">
+                    <label class="wo-field-label">Manufacturer:</label>
+                    <input type="text" id="manufacturer" class="p-2 border border-gray-300 rounded-lg focus:ring-indigo-500 focus:border-indigo-500" placeholder="e.g., Welch Allyn">
+                </div>
+                <div class="flex flex-col">
+                    <label class="wo-field-label">Model No.:</label>
+                    <input type="text" id="modelNo" class="p-2 border border-gray-300 rounded-lg focus:ring-indigo-500 focus:border-indigo-500" placeholder="Model Number">
+                </div>
+                <div class="flex flex-col">
+                    <label class="wo-field-label">Serial No.:</label>
+                    <input type="text" id="serialNo" class="p-2 border border-gray-300 rounded-lg focus:ring-indigo-500 focus:border-indigo-500" placeholder="Serial Number">
+                </div>
+                <div class="flex flex-col">
+                    <label class="wo-field-label">Asset Tag No.:</label>
+                    <input type="text" id="assetTagNo" class="p-2 border border-gray-300 rounded-lg focus:ring-indigo-500 focus:border-indigo-500" placeholder="Tag Number">
+                </div>
+                <div class="flex flex-col">
+                    <label class="wo-field-label">Location:</label>
+                    <input type="text" id="location" class="p-2 border border-gray-300 rounded-lg focus:ring-indigo-500 focus:border-indigo-500" placeholder="Clinic / Room">
+                </div>
+            </div>
+
+            <div class="mb-8">
+                <label class="wo-field-label block mb-2">Status Upon Receipt:</label>
+                <div id="status-upon-receipt" class="flex flex-wrap gap-4">
+                    <input type="radio" id="statusNew" name="statusUponReceipt" value="New" class="hidden peer/new">
+                    <label for="statusNew" class="px-3 py-1 border border-gray-300 rounded-full cursor-pointer peer-checked/new:bg-indigo-500 peer-checked/new:text-white transition duration-150">New</label>
+
+                    <input type="radio" id="statusUsed" name="statusUponReceipt" value="Used" class="hidden peer/used">
+                    <label for="statusUsed" class="px-3 py-1 border border-gray-300 rounded-full cursor-pointer peer-checked/used:bg-indigo-500 peer-checked/used:text-white transition duration-150">Used</label>
+
+                    <input type="radio" id="statusDemo" name="statusUponReceipt" value="Demo" class="hidden peer/demo">
+                    <label for="statusDemo" class="px-3 py-1 border border-gray-300 rounded-full cursor-pointer peer-checked/demo:bg-indigo-500 peer-checked/demo:text-white transition duration-150">Demo</label>
+
+                    <input type="radio" id="statusLoaner" name="statusUponReceipt" value="Loaner" class="hidden peer/loaner">
+                    <label for="statusLoaner" class="px-3 py-1 border border-gray-300 rounded-full cursor-pointer peer-checked/loaner:bg-indigo-500 peer-checked/loaner:text-white transition duration-150">Loaner</label>
+                </div>
+            </div>
+
+
+            <!-- --- Inspection Checklist --- -->
+            <h2 class="text-xl font-bold text-gray-700 mb-4 border-l-4 border-indigo-500 pl-3">Inspection Checklist</h2>
+            <div class="overflow-x-auto mb-8">
+                <table class="min-w-full divide-y divide-gray-200 border border-gray-300 checklist-table">
+                    <thead class="bg-gray-50">
+                        <tr>
+                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-1/3">Item</th>
+                            <th class="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider w-1/3">Result</th>
+                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-1/3">Comments</th>
+                        </tr>
+                    </thead>
+                    <tbody id="checklist-body" class="bg-white divide-y divide-gray-200">
+                        <!-- Checklist rows inserted via JS for dynamic access -->
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- --- Findings / Notes --- -->
+            <h2 class="text-xl font-bold text-gray-700 mb-4 border-l-4 border-indigo-500 pl-3">Findings / Notes</h2>
+            <div class="mb-8">
+                <textarea id="findings" rows="5" class="w-full p-3 border border-gray-300 rounded-lg focus:ring-indigo-500 focus:border-indigo-500" placeholder="Detailed summary of inspection results, including any deficiencies, observations, or recommendations."></textarea>
+            </div>
+
+            <!-- --- Technician Certification --- -->
+            <h2 class="text-xl font-bold text-gray-700 mb-4 border-l-4 border-indigo-500 pl-3">Technician Certification</h2>
+            <p class="text-sm text-gray-600 mb-6 italic">I certify that the above equipment has been inspected according to Biomedical Engineering standards and meets functional and safety requirements.</p>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+                <div>
+                    <label class="wo-field-label block mb-1">Technician Signature:</label>
+                    <input type="text" id="techSignature" class="w-full border-b border-gray-500 focus:border-indigo-500 py-1" placeholder="Printed Name / Signature">
+                    <label class="wo-field-label block mt-4 mb-1">Date:</label>
+                    <input type="date" id="techDate" class="w-full border-b border-gray-500 focus:border-indigo-500 py-1">
+                </div>
+                <div>
+                    <label class="wo-field-label block mb-1">Customer Acknowledgment (Optional):</label>
+                    <input type="text" id="customerAck" class="w-full border-b border-gray-500 focus:border-indigo-500 py-1" placeholder="Printed Name / Signature">
+                    <label class="wo-field-label block mt-4 mb-1">Date:</label>
+                    <input type="date" id="customerDate" class="w-full border-b border-gray-500 focus:border-indigo-500 py-1">
+                </div>
+            </div>
+
+
+            <!-- Action Buttons (no-print) -->
+            <div class="no-print mt-10 flex gap-4 justify-end">
+                <button onclick="saveWorkOrder()" class="flex items-center px-6 py-3 bg-green-600 text-white font-semibold rounded-lg shadow-md hover:bg-green-700 transition duration-150">
+                    <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4"></path></svg>
+                    Save Work Order
+                </button>
+                <button onclick="printWorkOrder()" class="flex items-center px-6 py-3 bg-indigo-600 text-white font-semibold rounded-lg shadow-md hover:bg-indigo-700 transition duration-150">
+                    <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12h-6"></path></svg>
+                    Print / Export PDF
+                </button>
+            </div>
+            <div id="message-box" class="mt-4 p-3 rounded-lg text-center font-medium hidden" role="alert"></div>
+
+        </div>
+    </div>
+</div>
+
+<!-- Firebase Setup -->
+<script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+    import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+    import { getFirestore, doc, setDoc, onSnapshot, collection, query, addDoc, getDoc, runTransaction, serverTimestamp, setLogLevel } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+    // --- Global Variables ---
+    // We use the new project ID here for the app data path
+    const appId = 'work-order-app-f2dc7'; 
+
+    // PASTE YOUR REAL FIREBASE CONFIGURATION HERE:
+   const firebaseConfig = {
+  apiKey: "AIzaSyDWQYOdR25kJEdAH-dO7mhyewTHiK90goU",
+  authDomain: "t2f-wo-app.firebaseapp.com",
+  projectId: "t2f-wo-app",
+  storageBucket: "t2f-wo-app.firebasestorage.app",
+  messagingSenderId: "421159653915",
+  appId: "1:421159653915:web:3d651703ff6a0c9fd59ebe",
+  measurementId: "G-7TCSQ32KZN"
+};
+
+    // We set the auth token to null for publicly hosted apps.
+    const initialAuthToken = null;
+    // ---------------------------------------------------------
+
+    let app;
+    let db;
+    let auth;
+    let userId = null;
+    let currentWoId = null; 
+    let nextWoNumber = 100; 
+
+    const WO_COLLECTION = 'workOrders';
+    // Helper function to dynamically generate paths using userId
+    const getGlobalCounterPath = (uid) => `/artifacts/${appId}/users/${uid}/counters/sequence`;
+    const getControlCounterCollectionPath = (uid) => `/artifacts/${appId}/users/${uid}/counters/controls`;
+    
+    // Checklist items definition
+    const checklistItems = [
+        { id: 'physicalCondition', label: 'Physical condition (no damage, clean)', type: 'PassFail' },
+        { id: 'powerCable', label: 'Power cable and accessories included', type: 'PassFail' },
+        { id: 'powerOnSelfTest', label: 'Power-on self test / startup check', type: 'PassFail' },
+        { id: 'functionalTest', label: 'Functional test (basic operation)', type: 'PassFail' },
+        { id: 'safetyCheck', label: 'Safety check performed', type: 'PassFail' },
+        { id: 'labeling', label: 'Labeling / Asset tag applied', type: 'PassFail' },
+        { id: 'documentation', label: 'Documentation verified (manuals, IFUs)', type: 'PassFail' },
+        { id: 'pmDueDate', label: 'PM due date assigned', type: 'YesNA' }
+    ];
+
+    window.newWorkOrder = newWorkOrder;
+    window.saveWorkOrder = saveWorkOrder;
+    window.printWorkOrder = printWorkOrder;
+    window.loadWorkOrder = loadWorkOrder;
+
+    document.addEventListener('DOMContentLoaded', () => {
+        setLogLevel('Debug');
+        setupFirebase();
+        setupChecklistTable();
+
+        // Event listener for Location Code input to update Control No. preview
+        document.getElementById('locationCode').addEventListener('input', updateControlNoPreview);
+    });
+
+    function setupChecklistTable() {
+        const checklistBody = document.getElementById('checklist-body');
+        checklistBody.innerHTML = checklistItems.map(item => {
+            const isPassFail = item.type === 'PassFail';
+            const option1Value = isPassFail ? 'Pass' : 'Yes';
+            const option2Value = isPassFail ? 'Fail' : 'N/A';
+
+            return `
+                <tr class="hover:bg-gray-50">
+                    <td class="px-4 py-3 text-sm font-medium text-gray-800">${item.label}</td>
+                    <td class="px-4 py-3 text-sm text-gray-500 text-center flex justify-center space-x-4">
+                        <div class="flex items-center space-x-1">
+                            <input type="radio" id="${item.id}Pass" name="${item.id}Result" value="${option1Value}" class="form-radio text-green-600 focus:ring-green-500">
+                            <label for="${item.id}Pass" class="text-gray-700">${option1Value}</label>
+                        </div>
+                        <div class="flex items-center space-x-1">
+                            <input type="radio" id="${item.id}Fail" name="${item.id}Result" value="${option2Value}" class="form-radio text-red-600 focus:ring-red-500">
+                            <label for="${item.id}Fail" class="text-gray-700">${option2Value}</label>
+                        </div>
+                    </td>
+                    <td class="px-4 py-3">
+                        <input type="text" id="${item.id}Comments" placeholder="Enter comments" class="w-full p-1 text-sm border-b border-gray-200 focus:border-indigo-500">
+                    </td>
+                </tr>
+            `;
+        }).join('');
+    }
+
+    // Helper function to format the control number (e.g., DUB-00001)
+    function formatControlNumber(code, num) {
+        const prefix = code ? code.toUpperCase() : 'XXX';
+        return prefix + '-' + String(num).padStart(5, '0');
+    }
+
+    // Function to sanitize the location code for use as a Firestore document ID
+    function sanitizeLocationCode(code) {
+        if (!code || typeof code !== 'string') return 'default';
+        // Only allow letters and numbers for the Firestore key
+        return code.toUpperCase().replace(/[^A-Z0-9]/g, '');
+    }
+
+    async function setupFirebase() {
+        if (!firebaseConfig) {
+            console.error("Firebase config is missing.");
+            document.getElementById('loading-overlay').innerHTML = `<div class="p-4 bg-red-100 border border-red-400 text-red-700 rounded-lg">Firebase configuration error.</div>`;
+            return;
+        }
+
+        try {
+            app = initializeApp(firebaseConfig);
+            db = getFirestore(app);
+            auth = getAuth(app);
+
+            // Authentication setup
+            if (initialAuthToken) {
+                await signInWithCustomToken(auth, initialAuthToken);
+            } else {
+                await signInAnonymously(auth);
+            }
+
+            onAuthStateChanged(auth, (user) => {
+                if (user) {
+                    userId = user.uid;
+                    document.getElementById('current-user-id').textContent = userId;
+                    document.getElementById('loading-overlay').classList.add('hidden');
+                    loadWorkOrderHistory();
+                    loadNextWoCounter(); 
+                } else {
+                    console.log("User signed out.");
+                }
+            });
+        } catch (error) {
+            console.error("Firebase setup failed:", error);
+            showMessageBox(`Firebase setup failed: ${error.message}`, 'error');
+            document.getElementById('loading-overlay').innerHTML = `<div class="p-4 bg-red-100 border border-red-400 text-red-700 rounded-lg">Firebase initialization failed. Check console for details.</div>`;
+        }
+    }
+
+    async function loadNextWoCounter() {
+        if (!db || !userId) return; // Check for userId now
+
+        try {
+            const counterRef = doc(db, getGlobalCounterPath(userId));
+            const counterSnap = await getDoc(counterRef);
+
+            if (counterSnap.exists()) {
+                nextWoNumber = counterSnap.data().nextWo || 100;
+            } else {
+                // Initialize global counter if document doesn't exist
+                await setDoc(counterRef, { nextWo: 100, initialSave: serverTimestamp() });
+                nextWoNumber = 100;
+            }
+            newWorkOrder(true); 
+        } catch (error) {
+            console.error("Error loading global WO counter:", error);
+            // This error should now be fixed by the path change, but we keep the handler
+            showMessageBox(`Failed to load global WO counter: ${error.message}`, 'error');
+            newWorkOrder(true); 
+        }
+    }
+
+    // Function to look up the next control number for a specific location code
+    async function getNextControlNumberForLocation(locationCode) {
+        if (!db || !userId || !locationCode) return 1;
+
+        const sanitizedCode = sanitizeLocationCode(locationCode);
+        const controlCounterRef = doc(db, getControlCounterCollectionPath(userId), sanitizedCode);
+
+        try {
+            const controlCounterSnap = await getDoc(controlCounterRef);
+            return controlCounterSnap.exists() ? (controlCounterSnap.data().nextControl || 1) : 1;
+        } catch (error) {
+            console.error("Error fetching location control number:", error);
+            return 1; // Default to 1 on error
+        }
+    }
+
+    // Updates the Control No. preview field when the Location Code changes (only for new WOs)
+    async function updateControlNoPreview() {
+        if (currentWoId) return; // Only run for new work orders
+
+        const locationCode = document.getElementById('locationCode').value.trim();
+        const controlNoField = document.getElementById('controlNo');
+
+        if (locationCode.length >= 2) {
+            controlNoField.value = "Loading...";
+            const nextCn = await getNextControlNumberForLocation(locationCode);
+            controlNoField.value = formatControlNumber(locationCode, nextCn);
+        } else {
+            controlNoField.value = "XXX-00001";
+        }
+    }
+
+
+    function getWorkOrderData() {
+        const data = {
+            // Work Order Info
+            woNo: document.getElementById('woNo').value,
+            woType: document.getElementById('woType').value, // New field
+            locationCode: document.getElementById('locationCode').value, // New field
+            controlNo: document.getElementById('controlNo').value, 
+            dateCompleted: document.getElementById('dateCompleted').value,
+            technician: document.getElementById('technician').value,
+            customerDept: document.getElementById('customerDept').value,
+            contactPerson: document.getElementById('contactPerson').value,
+            contactInfo: document.getElementById('contactInfo').value,
+
+            // Equipment Info
+            equipmentName: document.getElementById('equipmentName').value,
+            manufacturer: document.getElementById('manufacturer').value,
+            modelNo: document.getElementById('modelNo').value,
+            serialNo: document.getElementById('serialNo').value,
+            assetTagNo: document.getElementById('assetTagNo').value,
+            location: document.getElementById('location').value,
+            status: Array.from(document.getElementsByName('statusUponReceipt')).find(r => r.checked)?.value || '',
+
+            // Checklist
+            checklist: checklistItems.reduce((acc, item) => {
+                const result = Array.from(document.getElementsByName(`${item.id}Result`)).find(r => r.checked)?.value || '';
+                const comments = document.getElementById(`${item.id}Comments`).value;
+                acc[item.id] = { result, comments };
+                return acc;
+            }, {}),
+
+            // Findings/Notes
+            findings: document.getElementById('findings').value,
+
+            // Certification
+            techSignature: document.getElementById('techSignature').value,
+            techDate: document.getElementById('techDate').value,
+            customerAck: document.getElementById('customerAck').value,
+            customerDate: document.getElementById('customerDate').value,
+        };
+        return data;
+    }
+
+    function setWorkOrderData(data) {
+        currentWoId = data.id || null;
+        const isNewWo = !currentWoId;
+
+        // Set read-only status for WO fields based on whether it's a new WO
+        document.getElementById('woNo').readOnly = !isNewWo;
+        document.getElementById('controlNo').readOnly = !isNewWo;
+
+        // Work Order Info
+        document.getElementById('woNo').value = data.woNo || 'WO-N/A';
+        document.getElementById('woType').value = data.woType || '';
+        document.getElementById('locationCode').value = data.locationCode || '';
+
+        // Control No. logic update
+        if (isNewWo) {
+             document.getElementById('controlNo').value = "XXX-00001";
+             // Re-evaluate preview based on loaded/default locationCode
+             if (data.locationCode) updateControlNoPreview();
+        } else {
+             document.getElementById('controlNo').value = data.controlNo || 'N/A';
+        }
+        
+        document.getElementById('dateCompleted').value = data.dateCompleted || new Date().toISOString().substring(0, 10);
+        document.getElementById('technician').value = data.technician || '';
+        document.getElementById('customerDept').value = data.customerDept || '';
+        document.getElementById('contactPerson').value = data.contactPerson || '';
+        document.getElementById('contactInfo').value = data.contactInfo || '';
+
+        // Equipment Info
+        document.getElementById('equipmentName').value = data.equipmentName || '';
+        document.getElementById('manufacturer').value = data.manufacturer || '';
+        document.getElementById('modelNo').value = data.modelNo || '';
+        document.getElementById('serialNo').value = data.serialNo || '';
+        document.getElementById('assetTagNo').value = data.assetTagNo || '';
+        document.getElementById('location').value = data.location || '';
+
+        // Status Upon Receipt
+        Array.from(document.getElementsByName('statusUponReceipt')).forEach(r => r.checked = r.value === data.status);
+
+        // Checklist
+        checklistItems.forEach(item => {
+            const checklistData = data.checklist && data.checklist[item.id] ? data.checklist[item.id] : {};
+            const result = checklistData.result || '';
+            const comments = checklistData.comments || '';
+
+            Array.from(document.getElementsByName(`${item.id}Result`)).forEach(r => r.checked = r.value === result);
+            document.getElementById(`${item.id}Comments`).value = comments;
+        });
+
+        // Findings/Notes
+        document.getElementById('findings').value = data.findings || '';
+
+        // Certification
+        document.getElementById('techSignature').value = data.techSignature || data.technician || ''; 
+        document.getElementById('techDate').value = data.techDate || data.dateCompleted || '';
+        document.getElementById('customerAck').value = data.customerAck || '';
+        document.getElementById('customerDate').value = data.customerDate || '';
+    }
+
+    function newWorkOrder(isInitial = false) {
+        currentWoId = null;
+        document.getElementById('woNo').readOnly = true;
+        document.getElementById('controlNo').readOnly = true;
+
+        const newWoData = {
+            woNo: 'WO-' + nextWoNumber,
+            dateCompleted: new Date().toISOString().substring(0, 10),
+            technician: '',
+            techDate: new Date().toISOString().substring(0, 10),
+            status: 'Used',
+            woType: '',
+            locationCode: ''
+        };
+        setWorkOrderData(newWoData);
+        document.getElementById('customerDept').value = ''; 
+        document.getElementById('controlNo').value = "XXX-00001"; // Default for new WO
+        document.getElementById('locationCode').value = '';
+
+        if (!isInitial) {
+            showMessageBox(`New Work Order loaded. Global WO will be WO-${nextWoNumber}. Enter a 2+ letter Location Code to get the next Control No.`, 'info');
+        }
+    }
+
+    async function saveWorkOrder() {
+        if (!userId) {
+            showMessageBox("Authentication not ready. Please wait a moment.", 'error');
+            return;
+        }
+
+        let dataToSave = getWorkOrderData();
+        const collectionRef = collection(db, `/artifacts/${appId}/users/${userId}/${WO_COLLECTION}`);
+
+        // Input validation for new WO
+        if (!currentWoId) {
+            if (!dataToSave.woType) {
+                showMessageBox("Please select a Work Order Type.", 'error');
+                return;
+            }
+            const locationCode = dataToSave.locationCode.trim();
+            if (locationCode.length < 2) {
+                showMessageBox("Location Code (2+ letters) is required to assign a unique Control Number.", 'error');
+                return;
+            }
+            // Ensure locationCode is saved in uppercase
+            dataToSave.locationCode = locationCode.toUpperCase();
+        }
+
+        try {
+            let woRef;
+            let message;
+
+            if (currentWoId) {
+                // 1. Update existing document
+                dataToSave.updatedAt = serverTimestamp();
+                woRef = doc(db, `/artifacts/${appId}/users/${userId}/${WO_COLLECTION}`, currentWoId);
+                await setDoc(woRef, dataToSave, { merge: true });
+                message = `Work Order ${dataToSave.woNo} updated successfully!`;
+
+            } else {
+                // 2. Add new document: fetch/increment sequence number
+                const sanitizedLocationCode = sanitizeLocationCode(dataToSave.locationCode);
+
+                const transactionResult = await runTransaction(db, async (transaction) => {
+                    // 1. Get and Increment Global WO Counter
+                    const counterRef = doc(db, getGlobalCounterPath(userId));
+                    const counterSnap = await transaction.get(counterRef);
+                    let currentWo = counterSnap.exists() ? (counterSnap.data().nextWo || 100) : 100;
+                    const nextWo = currentWo + 1;
+                    transaction.set(counterRef, { nextWo: nextWo, lastUpdated: serverTimestamp() }, { merge: true });
+
+                    // 2. Get and Increment Location-Specific Control Counter
+                    const controlCounterRef = doc(db, getControlCounterCollectionPath(userId), sanitizedLocationCode);
+                    const controlCounterSnap = await transaction.get(controlCounterRef);
+                    let currentCn = controlCounterSnap.exists() ? (controlCounterSnap.data().nextControl || 1) : 1;
+                    const nextCn = currentCn + 1;
+                    transaction.set(controlCounterRef, { nextControl: nextCn, lastUpdated: serverTimestamp() }, { merge: true });
+
+                    return {
+                        woNumber: 'WO-' + currentWo,
+                        controlNumber: formatControlNumber(dataToSave.locationCode, currentCn),
+                        nextWo: nextWo,
+                    };
+                });
+
+                // Set the final reserved numbers on the WO document
+                dataToSave.woNo = transactionResult.woNumber;
+                dataToSave.controlNo = transactionResult.controlNumber;
+                dataToSave.createdAt = serverTimestamp();
+                dataToSave.updatedAt = serverTimestamp();
+
+                // Add new document
+                woRef = await addDoc(collectionRef, dataToSave);
+                currentWoId = woRef.id;
+
+                // Update client-side next global counter
+                nextWoNumber = transactionResult.nextWo;
+                newWorkOrder(true); // Load the new blank WO with the next global WO number
+
+                message = `Work Order ${dataToSave.woNo} saved successfully with Control No. ${dataToSave.controlNo}! Next global WO will be WO-${nextWoNumber}.`;
+            }
+
+            showMessageBox(message, 'success');
+
+        } catch (error) {
+            console.error("Error saving work order:", error);
+            showMessageBox(`Failed to save Work Order: ${error.message}. Please try again.`, 'error');
+        }
+    }
+
+    function loadWorkOrderHistory() {
+        if (!userId || !db) return;
+
+        const q = query(collection(db, `/artifacts/${appId}/users/${userId}/${WO_COLLECTION}`));
+        const listElement = document.getElementById('work-order-list');
+        const noWoMessage = document.getElementById('no-wo-message');
+
+        // Check if the DOM elements exist before manipulating them (safety check for the previous TypeError)
+        if (!listElement || !noWoMessage) {
+            console.error("DOM elements for history list not found.");
+            return;
+        }
+
+        noWoMessage.classList.remove('hidden');
+
+        onSnapshot(q, (snapshot) => {
+            listElement.innerHTML = ''; 
+            noWoMessage.classList.add('hidden');
+
+            if (snapshot.empty) {
+                noWoMessage.classList.remove('hidden');
+                return;
+            }
+
+            snapshot.docs.sort((a, b) => (b.data().updatedAt?.seconds || 0) - (a.data().updatedAt?.seconds || 0))
+                .forEach(doc => {
+                    const data = doc.data();
+                    const listItem = document.createElement('button');
+                    listItem.className = 'w-full text-left p-3 border border-gray-200 rounded-lg bg-gray-50 hover:bg-gray-100 transition duration-150';
+                    listItem.onclick = () => loadWorkOrder(doc.id);
+                    listItem.innerHTML = `
+                        <p class="font-semibold text-gray-800">${data.woNo || 'N/A'}</p>
+                        <p class="text-xs text-gray-500">${data.controlNo || 'N/A'} | ${data.woType || 'N/A'}</p>
+                        <p class="text-xs text-gray-500">Dept: ${data.customerDept || 'N/A'}</p>
+                    `;
+                    listElement.appendChild(listItem);
+                });
+        }, (error) => {
+            console.error("Error fetching work order history:", error);
+            showMessageBox(`Failed to load history: ${error.message}`, 'error');
+        });
+    }
+
+    async function loadWorkOrder(woId) {
+        try {
+            const docRef = doc(db, `/artifacts/${appId}/users/${userId}/${WO_COLLECTION}`, woId);
+            const docSnap = await getDoc(docRef);
+
+            if (docSnap.exists()) {
+                setWorkOrderData({ ...docSnap.data(), id: docSnap.id });
+                showMessageBox(`Work Order ${docSnap.data().woNo} loaded successfully.`, 'info');
+                document.getElementById('work-order-form').scrollIntoView({ behavior: 'smooth' });
+            } else {
+                showMessageBox("Work Order not found.", 'error');
+            }
+        } catch (error) {
+            console.error("Error loading specific work order:", error);
+            showMessageBox(`Failed to load Work Order: ${error.message}`, 'error');
+        }
+    }
+
+    function printWorkOrder() {
+        window.print();
+    }
+
+    function showMessageBox(message, type = 'info') {
+        const box = document.getElementById('message-box');
+        box.textContent = message;
+        box.classList.remove('hidden', 'bg-red-100', 'text-red-700', 'bg-green-100', 'text-green-700', 'bg-blue-100', 'text-blue-700');
+
+        switch (type) {
+            case 'success':
+                box.classList.add('bg-green-100', 'text-green-700');
+                break;
+            case 'error':
+                box.classList.add('bg-red-100', 'text-red-700');
+                break;
+            case 'info':
+            default:
+                box.classList.add('bg-blue-100', 'text-blue-700');
+                break;
+        }
+
+        setTimeout(() => {
+            box.classList.add('hidden');
+        }, 5000);
+    }
+
+</script>
+</body>
+</html>
