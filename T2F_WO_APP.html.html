@@ -608,49 +608,62 @@
             }
         }
 
-        // --- WORK ORDER NUMBERING LOGIC ---
+        // --- WORK ORDER NUMBERING LOGIC (CORRECTED) ---
+async function getNextWOAndControlNumbers() {
+    document.getElementById('loading-overlay').classList.remove('hidden');
 
-        async function getNextWOAndControlNumbers() {
-            document.getElementById('loading-overlay').classList.remove('hidden');
-            let woNo = 'WO-100';
-            let controlNo = 'AIMS-00001';
-            
-            try {
-                await runTransaction(db, async (transaction) => {
-                    // CORRECTED: Path is now constructed dynamically inside the transaction function
-                    const COUNTER_PATH = `artifacts/${appId}/users/${userId}/counters/main`; 
-                    const counterRef = doc(db, COUNTER_PATH);
-                    const counterDoc = await transaction.get(counterRef);
-                    
-                    let globalWO = 99; // Start at 100
-                    let globalControl = 0; // Start at 1
+    try {
+        const woAndControlNumbers = await runTransaction(db, async (transaction) => {
+            const userId = auth.currentUser ? auth.currentUser.uid : 'anonymous';
+            const counterRef = doc(db, 'artifacts', appId, 'users', userId, 'counters', 'main');
 
-                    if (counterDoc.exists()) {
-                        const data = counterDoc.data();
-                        globalWO = data.lastWo || 99;
-                        globalControl = data.lastControl || 0;
-                    }
-                    
-                    const nextWo = globalWO + 1;
-                    const nextControl = globalControl + 1;
+            const counterDoc = await transaction.get(counterRef);
 
-                    // Update the counter for the transaction
-                    transaction.set(counterRef, {
-                        lastWo: nextWo,
-                        lastControl: nextControl
-                    }, { merge: true });
+            // Use the initial values defined in the setupFirebase function (99/0) if document doesn't exist
+            let currentWO = counterDoc.exists ? (counterDoc.data().wo || 99) : 99;
+            let currentAIMS = counterDoc.exists ? (counterDoc.data().aims || 0) : 0;
 
-                    woNo = `WO-${nextWo}`;
-                    controlNo = `AIMS-${nextControl.toString().padStart(5, '0')}`;
-                });
-            } catch (e) {
-                console.error("Transaction failed:", e);
-                showMessage(`Failed to secure next Work Order number: ${e.message}`, true);
-            } finally {
-                document.getElementById('loading-overlay').classList.add('hidden');
-            }
+            const newWO = currentWO + 1;
+            const newAIMS = currentAIMS + 1;
+
+            // Update the counter in the transaction
+            transaction.set(counterRef, {
+                wo: newWO,
+                aims: newAIMS,
+                lastUpdated: serverTimestamp()
+            }, { merge: true });
+
+            // Format the numbers for display/storage
+            const woNo = 'WO-' + newWO;
+            const controlNo = 'AIMS-' + newAIMS.toString().padStart(5, '0');
+
             return { woNo, controlNo };
+        });
+
+        // Update UI with new numbers after successful transaction
+        document.getElementById('wo-no').value = woAndControlNumbers.woNo;
+        document.getElementById('control-no').value = woAndControlNumbers.controlNo;
+
+    } catch (error) {
+        console.error("Transaction failed:", error);
+        let errorMessage = error.message;
+
+        // Display error for user
+        if (errorMessage.includes('Permission denied')) {
+            errorMessage = "Permission denied. Please ensure your Firestore Security Rules allow read/write access for your user ID.";
         }
+
+        document.getElementById('error-text').textContent = `Initialization Error: ${errorMessage}`;
+        document.getElementById('error-message').classList.remove('hidden');
+
+        // Reset to WO-100 on failure for testing
+        document.getElementById('wo-no').value = 'WO-100';
+        document.getElementById('control-no').value = 'AIMS-00001';
+
+    } finally {
+        document.getElementById('loading-overlay').classList.add('hidden');
+    }
+}
         
         // --- DATA BINDING AND FORM MANAGEMENT ---
 
