@@ -217,7 +217,7 @@
                             <input type="text" id="wo-no" class="w-full p-2 bg-gray-700 rounded-lg border border-gray-600 text-white print-line" readonly>
                         </div>
 
-                        <!-- Control No. (Location Counter) -->
+                        <!-- Control No. (AIMS Sequence) -->
                         <div>
                             <label class="block text-sm font-medium text-gray-400">Control No. (AIMS Sequence)</label>
                             <input type="text" id="control-no" class="w-full p-2 bg-gray-700 rounded-lg border border-gray-600 text-white print-line" readonly>
@@ -485,12 +485,13 @@
         let currentWoId = null;
 
         // --- YOUR FIREBASE CONFIGURATION (MANDATORY UPDATE) ---
-        // I have inserted the keys from your screenshot. This should now work!
+        // I have inserted the clean key and config from our last known working state.
         
         // 1. MUST contain your Firebase Project ID here (used for data path):
         const appId = 't2f-wo-app-42i8d'; 
 
         // 2. MUST contain your Firebase Config Object here:
+        // This uses the brand new key AIzaSyBgCcUGcJw_SO1TZoXn6DnZ8CBZFNqGHc0
         const firebaseConfig = {
             apiKey: "AIzaSyBgCcUGcJw_SO1TZoXn6DnZ8CBZFNqGHc0",
             authDomain: "t2f-wo-app-42i8d.firebaseapp.com",
@@ -543,6 +544,39 @@
             // Set default month to current month
             monthSelect.value = currentMonth.toString().padStart(2, '0');
         }
+        
+        // Function to manually clear all form inputs
+        function manualFormReset() {
+            // Find all input, select, and textarea elements within the form container
+            const formContainer = document.getElementById('wo-form');
+            const elements = formContainer.querySelectorAll('input, select, textarea');
+
+            elements.forEach(element => {
+                const tag = element.tagName.toLowerCase();
+                const type = element.type;
+
+                if (tag === 'textarea' || (tag === 'input' && (type === 'text' || type === 'date'))) {
+                    // Clear text inputs and textareas
+                    element.value = '';
+                } else if (tag === 'select') {
+                    // Reset dropdowns to the first option (or empty string)
+                    element.selectedIndex = 0;
+                } else if (tag === 'input' && (type === 'radio')) {
+                    // Reset radio buttons to the default state (checked=true in HTML)
+                    if (element.name === 'status-receipt' && element.value === 'New') {
+                        element.checked = true;
+                    }
+                    if (element.name.startsWith('c') && element.value === 'Pass') {
+                        element.checked = true;
+                    }
+                }
+            });
+
+            // Set initial default values
+            document.getElementById('date-completed').valueAsDate = new Date();
+            document.getElementById('technician').value = "Biomed Engineer";
+        }
+
 
         // --- FIREBASE INITIALIZATION ---
 
@@ -576,8 +610,6 @@
 
         // --- WORK ORDER NUMBERING LOGIC ---
 
-        const COUNTER_PATH = `artifacts/${appId}/users/${userId}/counters/main`;
-
         async function getNextWOAndControlNumbers() {
             document.getElementById('loading-overlay').classList.remove('hidden');
             let woNo = 'WO-100';
@@ -585,6 +617,8 @@
             
             try {
                 await runTransaction(db, async (transaction) => {
+                    // CORRECTED: Path is now constructed dynamically inside the transaction function
+                    const COUNTER_PATH = `artifacts/${appId}/users/${userId}/counters/main`; 
                     const counterRef = doc(db, COUNTER_PATH);
                     const counterDoc = await transaction.get(counterRef);
                     
@@ -611,7 +645,7 @@
                 });
             } catch (e) {
                 console.error("Transaction failed:", e);
-                showMessage("Failed to secure next Work Order number. Check database connection and rules.", true);
+                showMessage(`Failed to secure next Work Order number: ${e.message}`, true);
             } finally {
                 document.getElementById('loading-overlay').classList.add('hidden');
             }
@@ -623,9 +657,10 @@
         function clearForm() {
             isNewWO = true;
             currentWoId = null;
-            document.getElementById('wo-form').reset();
-            document.getElementById('date-completed').valueAsDate = new Date();
-            document.getElementById('technician').value = "Biomed Engineer";
+            
+            // Call the manual reset function
+            manualFormReset();
+            
             document.getElementById('wo-type').value = ""; // Clear selected WO type
             
             // Set WO and Control numbers for the new entry
